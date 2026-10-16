@@ -1,0 +1,219 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OreSim – Seed-Based Ore X-Ray for Minecraft 26.3 (Fabric Mod)</title>
+<meta name="description" content="OreSim is a free Fabric mod that predicts ore locations from the Minecraft world seed and shows them through walls, even behind server anti-xray. Minecraft 26.3, 26.2 and 26.1.2, standalone (no Meteor Client), optional Baritone auto-mining.">
+<meta name="keywords" content="OreSim, oresim fabric, seed xray, seed based xray, ore finder, ore simulator, minecraft 26.3, anti-xray, baritone, meteor rejects oresim">
+<link rel="canonical" href="https://ohfok.github.io/oresim/">
+<meta name="robots" content="index, follow">
+<meta property="og:type" content="website">
+<meta property="og:title" content="OreSim – Seed-Based Ore X-Ray for Minecraft 26.3">
+<meta property="og:description" content="Predicts ores from the world seed and shows them through walls, even behind anti-xray. Standalone Fabric mod with optional Baritone auto-mining.">
+<meta property="og:url" content="https://ohfok.github.io/oresim/">
+<meta name="twitter:card" content="summary">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' fill='%237f7f7f'/%3E%3Crect x='3' y='3' width='4' height='4' fill='%2333ebcb'/%3E%3Crect x='9' y='8' width='4' height='4' fill='%2333ebcb'/%3E%3Crect x='5' y='10' width='3' height='3' fill='%2333ebcb'/%3E%3C/svg%3E">
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "OreSim",
+  "alternateName": ["OreSim by krwawiec", "OreSim Fabric"],
+  "description": "Seed-based ore x-ray for Minecraft (Fabric). Predicts ore locations from the world seed and renders them through walls, even behind server anti-xray. Optional Baritone auto-mining.",
+  "applicationCategory": "GameApplication",
+  "operatingSystem": "Windows, macOS, Linux",
+  "softwareVersion": "1.4.0",
+  "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"},
+  "license": "https://www.gnu.org/licenses/gpl-3.0.html",
+  "url": "https://ohfok.github.io/oresim/",
+  "downloadUrl": "https://github.com/oHfok/oresim/releases/latest",
+  "codeRepository": "https://github.com/oHfok/oresim",
+  "author": {"@type": "Person", "name": "krwawiec", "url": "https://github.com/oHfok"}
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {"@type": "Question", "name": "What is OreSim?",
+     "acceptedAnswer": {"@type": "Answer", "text": "OreSim is a Minecraft mod that replays vanilla ore generation from the world seed and shows where every ore is, through walls. It started as a module of the meteor-rejects addon; this is a standalone Fabric version."}},
+    {"@type": "Question", "name": "Does OreSim work on servers with anti-xray?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Yes. The positions come from the seed, not from what the server sends. Measured with and without Paper anti-xray, the accuracy differs by at most 0.4 percentage points; about 99% of predicted diamonds are real."}},
+    {"@type": "Question", "name": "Do I need Meteor Client for OreSim?",
+     "acceptedAnswer": {"@type": "Answer", "text": "No. This OreSim is a standalone Fabric mod that only needs Fabric API. It also works alongside Meteor Client."}},
+    {"@type": "Question", "name": "Which Minecraft versions does OreSim support?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Minecraft 26.3, 26.2 and 26.1.2 on Fabric, with Java 25 or newer."}},
+    {"@type": "Question", "name": "How do I use OreSim on a multiplayer server?",
+     "acceptedAnswer": {"@type": "Answer", "text": "Type /setoresimseed followed by the server's world seed. It is remembered per server. In singleplayer the seed is read from the world automatically."}}
+  ]
+}
+</script>
+<style>
+  :root {
+    --bg: #f6f7f8;
+    --surface: #ffffff;
+    --text: #1b1f23;
+    --muted: #5b6470;
+    --border: #dde1e6;
+    --accent: #0e9f8a;
+    --accent-text: #ffffff;
+    --code-bg: #eef1f4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #111417;
+      --surface: #1a1e23;
+      --text: #e6e9ec;
+      --muted: #9aa4af;
+      --border: #2b3138;
+      --accent: #33ebcb;
+      --accent-text: #0b1513;
+      --code-bg: #232931;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #111417;
+    --surface: #1a1e23;
+    --text: #e6e9ec;
+    --muted: #9aa4af;
+    --border: #2b3138;
+    --accent: #33ebcb;
+    --accent-text: #0b1513;
+    --code-bg: #232931;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  main { max-width: 860px; margin: 0 auto; padding: 0 16px 64px; }
+  header { padding: 56px 0 32px; }
+  h1 { font-size: clamp(2rem, 6vw, 3rem); line-height: 1.1; margin: 0 0 12px; }
+  h2 { font-size: 1.4rem; margin: 48px 0 12px; }
+  h3 { font-size: 1.05rem; margin: 24px 0 6px; }
+  p { margin: 0 0 12px; }
+  .lead { font-size: 1.15rem; color: var(--muted); max-width: 680px; }
+  .buttons { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
+  .button {
+    display: inline-block; padding: 10px 18px; border-radius: 8px;
+    text-decoration: none; font-weight: 600; border: 1px solid var(--border);
+    color: var(--text); background: var(--surface);
+  }
+  .button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  a { color: var(--accent); }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 16px; }
+  .card h3 { margin-top: 0; }
+  .card p { color: var(--muted); margin: 0; }
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; overflow: hidden; font-size: 0.95rem; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  code { background: var(--code-bg); padding: 1px 6px; border-radius: 4px; font-size: 0.92em; }
+  ol li, ul li { margin-bottom: 6px; }
+  .note { border-left: 3px solid var(--accent); padding: 8px 14px; background: var(--surface); border-radius: 0 8px 8px 0; color: var(--muted); }
+  details { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; }
+  summary { cursor: pointer; font-weight: 600; }
+  details p { margin: 10px 0 0; color: var(--muted); }
+  footer { margin-top: 56px; color: var(--muted); font-size: 0.9rem; border-top: 1px solid var(--border); padding-top: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>OreSim</h1>
+    <p class="lead">A seed-based ore x-ray for <strong>Minecraft 26.3</strong>, 26.2 and 26.1.2 (Fabric). It works out where every ore generated from the world seed and shows it through walls, even on servers with anti-xray. Standalone, no Meteor Client needed, with optional Baritone auto-mining.</p>
+    <div class="buttons">
+      <a class="button primary" href="https://github.com/oHfok/oresim/releases/latest">Download OreSim 1.4.0</a>
+      <a class="button" href="https://github.com/oHfok/oresim">Source on GitHub</a>
+    </div>
+  </header>
+
+  <section>
+    <h2>Features</h2>
+    <div class="grid">
+      <div class="card"><h3>Ores from the seed</h3><p>Coal, iron, gold, redstone, diamond, lapis, copper, emerald, nether quartz, nether gold and ancient debris, drawn through walls within 5 chunks.</p></div>
+      <div class="card"><h3>Works behind anti-xray</h3><p>The positions come from the seed, not from the blocks the server sends, so fake ores and hidden ores don't matter.</p></div>
+      <div class="card"><h3>Measured accuracy</h3><p>About 99% of predicted diamonds are real, 100% in the nether, tested against worlds generated by a real server.</p></div>
+      <div class="card"><h3>Baritone auto-mining</h3><p><code>/oresim mine diamond</code> digs to the predicted ores, follows veins, picks up the drops and tunnels onward.</p></div>
+      <div class="card"><h3>Remembers what's done</h3><p>Mined ores and wrong predictions disappear from the overlay and are saved per server, seed and dimension.</p></div>
+      <div class="card"><h3>Clean rendering</h3><p>Veins drawn as one outlined shape, or boxes or outlines, with fill, line and range settings in the menu (O key).</p></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Download and install</h2>
+    <ol>
+      <li>Install <a href="https://fabricmc.net/use/">Fabric Loader</a> 0.19 or newer for your Minecraft version (Java 25+).</li>
+      <li>Download the OreSim jar for your version from the <a href="https://github.com/oHfok/oresim/releases/latest">latest release</a> and put it in your <code>mods</code> folder, with Fabric API. Remove older OreSim jars.</li>
+      <li>Optional: add the matching Baritone <code>baritone-api-fabric</code> jar for auto-mining.</li>
+    </ol>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Minecraft</th><th>OreSim jar</th><th>Fabric API</th><th>Baritone (optional)</th></tr></thead>
+        <tbody>
+          <tr><td><strong>26.3</strong></td><td><code>oresim-by-krwawiec-1.4.0-mc26.3.jar</code></td><td>0.163.0+26.3</td><td><a href="https://github.com/cabaletta/baritone/releases/tag/v1.20.0">1.20.0</a></td></tr>
+          <tr><td>26.2</td><td><code>oresim-by-krwawiec-1.4.0-mc26.2.jar</code></td><td>0.161.0+26.2</td><td><a href="https://github.com/cabaletta/baritone/releases/tag/v1.19.0">1.19.0</a></td></tr>
+          <tr><td>26.1.2</td><td><code>oresim-by-krwawiec-1.4.0-mc26.1.2.jar</code></td><td>0.155.3+26.1.2</td><td><a href="https://github.com/cabaletta/baritone/releases/tag/v1.18.0">1.18.0</a></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <h2>How to use</h2>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          <tr><td>Toggle the ore overlay</td><td><strong>X</strong> key</td></tr>
+          <tr><td>Choose ores and display style</td><td><strong>O</strong> key or <code>/oresim</code></td></tr>
+          <tr><td>Set the seed on a server</td><td><code>/setoresimseed &lt;seed&gt;</code> (remembered per server)</td></tr>
+          <tr><td>Auto-mine ores (Baritone)</td><td><code>/oresim mine diamond debris</code>, stop with <code>/oresim stop</code></td></tr>
+          <tr><td>Show mined ores again</td><td><code>/oresim clearmined</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px">In singleplayer the seed is read from the world automatically.</p>
+  </section>
+
+  <section>
+    <h2>Accuracy, with and without anti-xray</h2>
+    <p>Measured on worlds generated by a real Minecraft 26.3 server, 289 chunks per seed. <em>Precision</em> is the share of predicted ores that are real; <em>recall</em> is the share of real ores that were predicted.</p>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Seed</th><th>Server</th><th>Diamonds precision / recall</th><th>All ores precision / recall</th></tr></thead>
+        <tbody>
+          <tr><td>12345</td><td>anti-xray</td><td>98.8% / 99.0%</td><td>97.6% / 90.0%</td></tr>
+          <tr><td>12345</td><td>no anti-xray</td><td>99.1% / 99.4%</td><td>98.0% / 90.3%</td></tr>
+          <tr><td>42</td><td>anti-xray</td><td>99.4% / 99.9%</td><td>96.3% / 91.4%</td></tr>
+          <tr><td>42</td><td>no anti-xray</td><td>99.4% / 99.9%</td><td>96.5% / 91.8%</td></tr>
+          <tr><td>-4172144997902289642</td><td>anti-xray</td><td>99.6% / 99.7%</td><td>99.5% / 99.5%</td></tr>
+          <tr><td>-4172144997902289642</td><td>no anti-xray</td><td>99.6% / 99.7%</td><td>99.7% / 99.7%</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:12px">Nether ores: 100% in every case. Iron and copper also form large noise-based veins that aren't simulated, which lowers their recall.</p>
+  </section>
+
+  <section>
+    <h2>FAQ</h2>
+    <details><summary>What is OreSim?</summary><p>OreSim replays vanilla ore generation from the world seed and shows where every ore is, through walls. It started as a module of the meteor-rejects addon for Meteor Client; this is a standalone Fabric mod with accuracy fixes, auto-mining and support for current Minecraft versions.</p></details>
+    <details><summary>Does OreSim work on servers with anti-xray?</summary><p>Yes. The positions come from the seed, not from what the server sends. With and without Paper anti-xray the accuracy differs by at most 0.4 percentage points.</p></details>
+    <details><summary>Do I need Meteor Client?</summary><p>No. It only needs Fabric API, and it works alongside Meteor Client if you use it.</p></details>
+    <details><summary>Where do I get the seed of a server?</summary><p>Some servers publish it; otherwise it can't be read from the client. Set it with <code>/setoresimseed</code>. In singleplayer it's read automatically.</p></details>
+    <details><summary>Why is a predicted ore sometimes wrong?</summary><p>Tunnels dug by other players, chunks generated by older Minecraft versions, or world-generation datapacks change what generated. Predictions that turn out wrong once you can see the block are hidden automatically.</p></details>
+  </section>
+
+  <p class="note" style="margin-top:40px">Using x-ray or automated mining on a server you don't run may break its rules and get you banned. Check first.</p>
+
+  <footer>
+    OreSim by krwawiec, GPL-3.0. Based on <a href="https://github.com/gumark/fabric-oresim">gumark/fabric-oresim</a> and the OreSim module of <a href="https://github.com/AntiCope/meteor-rejects">meteor-rejects</a>. Not affiliated with Mojang or Microsoft.
+  </footer>
+</main>
+</body>
+</html>

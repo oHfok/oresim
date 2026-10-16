@@ -11,8 +11,9 @@
     "gumark (original standalone port)"
   ],
   "contact": {
-    "sources": "https://github.com/oHfok/fabric-oresim",
-    "issues": "https://github.com/oHfok/fabric-oresim/issues"
+    "homepage": "https://ohfok.github.io/oresim/",
+    "sources": "https://github.com/oHfok/oresim",
+    "issues": "https://github.com/oHfok/oresim/issues"
   },
   "license": "GPL-3.0-only",
   "environment": "client",

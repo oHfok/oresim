@@ -1,10 +1,14 @@
 # OreSim by krwawiec
 
-Maintained by krwawiec ([oHfok](https://github.com/oHfok)). A client-side Fabric mod for **Minecraft 26.3** (also 26.2 and 26.1.2) that predicts where ores
-generated from the world seed, shows them as boxes through walls, and can
-drive [Baritone](https://github.com/cabaletta/baritone) to mine them for you.
-It works behind server anti-xray, because the positions come from the seed,
-not from what the server sends.
+**OreSim** is a seed-based x-ray (ore finder) mod for **Minecraft 26.3**, 26.2
+and 26.1.2 on Fabric. It predicts where ores generated from the world seed,
+shows them as boxes through walls, and can drive
+[Baritone](https://github.com/cabaletta/baritone) to mine them for you. It
+works behind server anti-xray, because the positions come from the seed, not
+from what the server sends. It's a standalone mod: no Meteor Client needed.
+
+**[Download](../../releases/latest)** · **[Website](https://ohfok.github.io/oresim/)** ·
+maintained by krwawiec ([oHfok](https://github.com/oHfok)).
 
 It started as a fork of "OreSim by gumark"
 ([gumark/fabric-oresim](https://github.com/gumark/fabric-oresim)), itself a
