@@ -15,6 +15,13 @@ def flavor = mcVersion == '26.3' ? 'mc263' : 'mc262'
 sourceSets.main.java.srcDir("src/${flavor}/java")
 sourceSets.main.resources.srcDir("src/${flavor}/resources")
 
+// The Baritone release built for each Minecraft version.
+def baritoneVersion = [
+    '26.1.2': '1.18.0',
+    '26.2'  : '1.19.0',
+    '26.3'  : '1.20.0',
+][mcVersion] ?: '1.20.0'
+
 version = project.mod_version
 group = project.maven_group
 
@@ -42,20 +49,22 @@ dependencies {
     implementation "net.fabricmc.fabric-api:fabric-api:${fapiVersion}"
 
     // Optional Baritone integration (/oresim mine); not bundled, users install Baritone themselves.
-    // Official cabaletta/baritone v1.18.0 release (Minecraft 26.1.x).
-    compileOnly files("libs/baritone-api-fabric-1.18.0.jar")
+    // Official cabaletta/baritone releases, one per Minecraft version (see libs/README.md).
+    compileOnly files("libs/baritone-api-fabric-${baritoneVersion}.jar")
 }
 
 // ---------------------------------------------------------------------------
 // Accuracy tester (development only, never part of the mod jar): generates a
 // world on a dedicated server and compares OreSim's predictions with it.
 //   gradlew runAccuracyTest -Pseed=12345 [-Pradius=8] [-Pdimensions=overworld,nether]
-// The report is written to run-tester/oresim-accuracy-<seed>.md.
+// The report is written to run-tester/oresim-accuracy-mc<version>-<seed>.md.
 // ---------------------------------------------------------------------------
 sourceSets {
     tester {
         compileClasspath += main.compileClasspath + main.output
         runtimeClasspath += main.runtimeClasspath + main.output
+        // The tester's accessor mixins are only needed (and only exist) on 26.1/26.2.
+        resources.srcDir("src/${flavor}/tester-resources")
     }
 }
 
@@ -73,21 +82,31 @@ loom {
             // The main mod is client-only, so the loader skips it on a server;
             // its classes (the simulation) must still be reachable by the tester.
             vmArg "-Dfabric.debug.disableClassPathIsolation=true"
+            vmArg "-Doresim.test.mc=${mcVersion}"
             vmArg "-Doresim.test.radius=${findProperty('radius') ?: 8}"
             vmArg "-Doresim.test.dimensions=${findProperty('dimensions') ?: 'overworld,nether'}"
+        }
+        // Starts the real client, joins run/saves/<world> with the overlay on, logs
+        // the predicted ore counts and quits:  gradlew runClientSmokeTest -Pworld=<name>
+        clientSmokeTest {
+            client()
+            name "OreSim client smoke test"
+            ideConfigGenerated false
+            vmArg "-Doresim.smokeTest=true"
+            programArgs "--quickPlaySingleplayer", (findProperty('world') ?: 'smoketest').toString()
         }
     }
 }
 
 tasks.matching { it.name == 'runAccuracyTest' }.configureEach {
     doFirst {
-        // One world per seed, so a rerun with the same seed loads instead of regenerating.
+        // One world per Minecraft version and seed, so a rerun loads instead of regenerating.
         def dir = file("run-tester")
         dir.mkdirs()
         new File(dir, "eula.txt").text = "eula=true\n"
         new File(dir, "server.properties").text = """\
 level-seed=${testSeed}
-level-name=world-${testSeed}
+level-name=world-mc${mcVersion}-${testSeed}
 server-port=25599
 online-mode=false
 """

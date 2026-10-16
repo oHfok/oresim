@@ -1,6 +1,7 @@
 package dev.gumark.oresim;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.server.MinecraftServer;
 
 /**
  * Holds the world seed used by the ore simulation.
@@ -39,6 +40,8 @@ public final class SeedStore {
     /** The seed to simulate with, or {@code null} if none is known. */
     public static Long getSeed() {
         if (manualSeed != null) return manualSeed;
+        MinecraftServer integrated = Minecraft.getInstance().getSingleplayerServer();
+        if (integrated != null) return integrated.overworld().getSeed();
         String address = currentServerAddress();
         if (address == null) return null;
         return ServerSeedMemory.get(address);

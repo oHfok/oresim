@@ -38,7 +38,7 @@ import java.util.function.LongPredicate;
  * dedicated server, runs the mod's own {@link OreSimulator} against what a
  * client would see, and compares with where the ores actually are.
  *
- * <p>Runs once the server has started, writes {@code oresim-accuracy-<seed>.md}
+ * <p>Runs once the server has started, writes {@code oresim-accuracy-mc<version>-<seed>.md}
  * into the server directory and stops the server. Settings (system properties):
  * {@code oresim.test.radius} (chunks around 0,0; default 8),
  * {@code oresim.test.dimensions} (default {@code overworld,nether}) and
@@ -64,6 +64,7 @@ public final class AccuracyTester implements DedicatedServerModInitializer {
 
     private static void run(MinecraftServer server) throws IOException {
         long seed = server.overworld().getSeed();
+        String mc = System.getProperty("oresim.test.mc", "");
         int radius = Integer.getInteger("oresim.test.radius", 8);
         int tunnelSpacing = Integer.getInteger("oresim.test.tunnelSpacing", 8);
         String[] dimensions = System.getProperty("oresim.test.dimensions", "overworld,nether").split(",");
@@ -71,7 +72,7 @@ public final class AccuracyTester implements DedicatedServerModInitializer {
         int side = 2 * radius + 1;
         StringBuilder report = new StringBuilder();
         report.append("# OreSim accuracy, seed ").append(seed).append("\n\n");
-        report.append("Minecraft 26.1.2. Evaluated area: chunks ").append(-radius).append("..").append(radius)
+        report.append("Minecraft ").append(mc.isEmpty() ? "?" : mc).append(". Evaluated area: chunks ").append(-radius).append("..").append(radius)
             .append(" around 0,0 (").append(side * side).append(" chunks, ").append(side * 16).append("×")
             .append(side * 16).append(" blocks).\n\n");
         report.append("- **Precision**: share of predicted positions that really hold that ore (low = boxes on stone).\n");
@@ -89,7 +90,7 @@ public final class AccuracyTester implements DedicatedServerModInitializer {
             testDimension(report, level, seed, radius, tunnelSpacing);
         }
 
-        Path output = server.getServerDirectory().resolve("oresim-accuracy-" + seed + ".md");
+        Path output = server.getServerDirectory().resolve("oresim-accuracy-" + (mc.isEmpty() ? "" : "mc" + mc + "-") + seed + ".md");
         Files.writeString(output, report, StandardCharsets.UTF_8);
         LOG.info("Report written to {}\n{}", output.toAbsolutePath(), report);
     }

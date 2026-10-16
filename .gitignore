@@ -16,3 +16,6 @@ out/
 
 # Logs from running Minecraft classes locally
 logs/
+
+# Client smoke test game directory
+run/

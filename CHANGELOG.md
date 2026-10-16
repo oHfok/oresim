@@ -4,6 +4,30 @@ All notable changes to **OreSim by krwawiec** (called "OreSim by gumark" up
 to 1.1.0, when gumark maintained it) are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.4.0] — 2026-10-16
+
+Minecraft versions: **26.3** (newest), **26.2**, **26.1.2** (Fabric). Java: 25+
+
+### Added
+- **Minecraft 26.3 tested and supported**: built against Fabric API
+  0.163.0+26.3 and Baritone 1.20.0. The accuracy tester on real 26.3 world
+  generation gives the same results as on 26.1.2 (diamonds 98.8–99.6%
+  precision, all ores 96.3–99.5%, nether 100%, behind anti-xray), and the
+  client was started on 26.3 and drew the overlay without errors.
+- Each Minecraft version is compiled against its own Baritone release
+  (1.18.0 for 26.1.2, 1.19.0 for 26.2, 1.20.0 for 26.3).
+- Client smoke test for development (`gradlew runClientSmokeTest`): starts
+  the real game, joins a world with the overlay on, logs the predicted ores
+  and quits.
+
+### Fixed
+- Singleplayer: the seed is now read from the world as documented; before,
+  turning the overlay on said "no seed set" unless `/setoresimseed` was used.
+
+### Changed
+- Accuracy tester reports and worlds are named per Minecraft version
+  (`oresim-accuracy-mc<version>-<seed>.md`).
+
 ## [1.3.0] — 2026-10-16
 
 Minecraft version: **26.1.2** (Fabric). Java: 25+

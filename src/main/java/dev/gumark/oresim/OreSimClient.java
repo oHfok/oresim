@@ -41,6 +41,12 @@ public class OreSimClient implements ClientModInitializer {
     private boolean openGuiQueued;
     /** Whether the "there's a menu" hint was shown this session. */
     private boolean menuHintShown;
+    /**
+     * Development smoke test ({@code -Doresim.smokeTest=true}, used by {@code gradlew runClientSmokeTest}):
+     * turns the overlay on when a world is joined, logs how many ores were predicted, then quits.
+     */
+    private static final boolean SMOKE_TEST = Boolean.getBoolean("oresim.smokeTest");
+    private int smokeTestTicks = -1;
 
     @Override
     public void onInitializeClient() {
@@ -68,6 +74,7 @@ public class OreSimClient implements ClientModInitializer {
             MinedOres.saveIfDirty(true);
         });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
+            if (SMOKE_TEST) smokeTestTicks = 0;
             Long remembered = SeedStore.restoredSeedOrNull();
             if (remembered != null) {
                 client.player.sendSystemMessage(Component.literal(
@@ -141,7 +148,7 @@ public class OreSimClient implements ClientModInitializer {
                                 "OreSim seed set to: " + seed + " (will be remembered for " + address + ")"));
                         } else {
                             context.getSource().sendFeedback(Component.literal(
-                                "OreSim seed set to: " + seed + " (read from singleplayer world)"));
+                                "OreSim seed set to: " + seed + " (this session only; singleplayer worlds otherwise use their own seed)"));
                         }
                         return 1;
                     }))
@@ -197,5 +204,20 @@ public class OreSimClient implements ClientModInitializer {
             Minecraft.getInstance().setScreenAndShow(new OreSimScreen());
         }
         oreSim.tick();
+        if (smokeTestTicks >= 0) smokeTest();
+    }
+
+    private void smokeTest() {
+        Minecraft client = Minecraft.getInstance();
+        if (client.player == null) return;
+        if (smokeTestTicks++ == 0) oreSim.setActive(true);
+        if (smokeTestTicks < 400) return;
+        int[] counts = new int[OreType.values().length];
+        oreSim.forEachOre(EnumSet.allOf(OreType.class), (type, pos) -> counts[type.ordinal()]++);
+        StringBuilder line = new StringBuilder("OreSim smoke test: predicted");
+        for (OreType type : OreType.values()) line.append(' ').append(type.name()).append('=').append(counts[type.ordinal()]);
+        org.slf4j.LoggerFactory.getLogger(MOD_ID).info(line.toString());
+        smokeTestTicks = -1;
+        client.stop();
     }
 }
