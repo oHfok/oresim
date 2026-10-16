@@ -1,6 +1,7 @@
 # Changelog
 
-All notable changes to **OreSim by gumark** are documented in this file.
+All notable changes to **OreSim by krwawiec** (called "OreSim by gumark" up
+to 1.1.0, when gumark maintained it) are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [1.3.0] — 2026-10-16
@@ -18,6 +19,9 @@ Minecraft version: **26.1.2** (Fabric). Java: 25+
   on, a chat hint mentions it.
 
 ### Changed
+- Renamed to **OreSim by krwawiec**, now maintained by krwawiec; jars are
+  named `oresim-by-krwawiec-<version>-mc<minecraft>.jar`. The mod id stays
+  `oresim`, so existing configs and saved data keep working.
 - Ore toggles and display settings are saved in `config/oresim-settings.json`
   instead of resetting on every restart.
 - Coal and lapis colours brightened so they stay visible as a fill.

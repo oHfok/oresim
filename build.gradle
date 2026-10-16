@@ -23,7 +23,7 @@ base {
 }
 
 // Name every archive with the mod version and the Minecraft version it
-// targets, e.g. oresim-by-gumark-1.1.0-mc26.3.jar
+// targets, e.g. oresim-by-krwawiec-1.3.0-mc26.1.2.jar
 
 tasks.withType(AbstractArchiveTask).configureEach {
     archiveVersion = "${project.mod_version}-mc${mcVersion}"

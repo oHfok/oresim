@@ -16,7 +16,7 @@ import java.util.function.Supplier;
  * they are drawn. Changes apply immediately and are saved.
  */
 public class OreSimScreen extends Screen {
-    private static final Component TITLE = Component.literal("OreSim");
+    private static final Component TITLE = Component.literal("OreSim by krwawiec");
     private static final Component ORES = Component.literal("Ores").withStyle(ChatFormatting.GRAY);
     private static final Component DISPLAY = Component.literal("Display").withStyle(ChatFormatting.GRAY);
     private static final int BUTTON_WIDTH = 150;

@@ -1,15 +1,16 @@
-# OreSim + Baritone auto-miner
+# OreSim by krwawiec
 
-A client-side Fabric mod for **Minecraft 26.1.2** that predicts where ores
+Maintained by krwawiec ([oHfok](https://github.com/oHfok)). A client-side Fabric mod for **Minecraft 26.1.2** that predicts where ores
 generated from the world seed, shows them as boxes through walls, and can
 drive [Baritone](https://github.com/cabaletta/baritone) to mine them for you.
 It works behind server anti-xray, because the positions come from the seed,
 not from what the server sends.
 
-This is a fork of [gumark/fabric-oresim](https://github.com/gumark/fabric-oresim),
-itself a standalone port of the OreSim module of
-[meteor-rejects](https://github.com/AntiCope/meteor-rejects). What this fork
-adds is listed under [Changes in this fork](#changes-in-this-fork).
+It started as a fork of "OreSim by gumark"
+([gumark/fabric-oresim](https://github.com/gumark/fabric-oresim)), itself a
+standalone port of the OreSim module of
+[meteor-rejects](https://github.com/AntiCope/meteor-rejects). What it adds is
+listed under [Changes in this fork](#changes-in-this-fork).
 
 > Using x-ray or automated mining on a server you don't run may break its
 > rules and get you banned. Check first.
@@ -140,7 +141,7 @@ Requires JDK 25.
 ./gradlew build -Pmc=26.1.2 -Pfapi=0.155.3+26.1.2
 ```
 
-The jar is written to `build/libs/oresim-by-gumark-<version>-mc26.1.2.jar`.
+The jar is written to `build/libs/oresim-by-krwawiec-<version>-mc26.1.2.jar`.
 
 It also builds for 26.2 and 26.3 (`-Pmc=26.2 -Pfapi=0.161.0+26.2`,
 `-Pmc=26.3 -Pfapi=0.161.0+26.3`), but only 26.1.2 has been tested in game.
@@ -176,8 +177,8 @@ Compared with gumark/fabric-oresim 1.1.0 (full list in [CHANGELOG.md](CHANGELOG.
 
 ## Credits
 
-- [gumark/fabric-oresim](https://github.com/gumark/fabric-oresim): the
-  standalone Fabric port this fork builds on.
+- [gumark/fabric-oresim](https://github.com/gumark/fabric-oresim) ("OreSim by
+  gumark"): the standalone Fabric port this mod builds on.
 - [meteor-rejects](https://github.com/AntiCope/meteor-rejects): the original
   OreSim module and its port of vanilla's ore generation.
 - [Baritone](https://github.com/cabaletta/baritone) (LGPL-3.0): pathing and

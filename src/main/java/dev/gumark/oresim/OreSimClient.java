@@ -27,7 +27,7 @@ import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 
 /**
- * OreSim by gumark - predicts and renders ore locations from the world seed.
+ * OreSim by krwawiec - predicts and renders ore locations from the world seed.
  *
  * <p>Toggle with the X key, set the seed with {@code /setoresimseed <seed>}.
  */

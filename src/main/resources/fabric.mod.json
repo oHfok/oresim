@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "id": "oresim",
   "version": "${version}",
-  "name": "OreSim by gumark",
-  "description": "Simulates world ore generation from a seed and renders every ore through walls. Set a seed with /setoresimseed and toggle with X.",
+  "name": "OreSim by krwawiec",
+  "description": "Predicts ores from the world seed and shows them through walls, even behind anti-xray; optional Baritone auto-mining. Toggle with X, settings with O. Based on gumark's standalone port of meteor-rejects' OreSim.",
   "authors": [
-    "gumark"
+    "krwawiec"
   ],
   "contributors": [
-    "oHfok"
+    "gumark (original standalone port)"
   ],
   "contact": {
     "sources": "https://github.com/oHfok/fabric-oresim",
