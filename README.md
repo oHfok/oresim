@@ -46,13 +46,23 @@ Works alongside Meteor Client.
 | Action | How |
 | --- | --- |
 | Toggle the overlay | **X** key (rebindable in Controls) |
+| Open the menu | **O** key or `/oresim` |
 | Set the world seed (multiplayer) | `/setoresimseed <seed>` (remembered per server) |
-| Choose which ores are shown | `/oresim` opens the toggle menu |
 | Show mined/disproven ores again | `/oresim clearmined` |
 
 In singleplayer the seed is read from the world. Seeds follow vanilla rules:
 numeric text is a literal seed, other text is hashed like the world-creation
 screen does.
+
+The menu chooses which ores are shown (with *Show all* / *Hide all*) and how
+they're drawn; everything is saved in `config/oresim-settings.json`:
+
+| Setting | Options |
+| --- | --- |
+| Style | **Veins**: each vein as one shape, outer edges and faces only (default). **Boxes**: a see-through box per block. **Outlines**: the edges of every block. |
+| Fill | Off, Low, Medium, High (see-through) |
+| Lines | Thin, Normal, Thick |
+| Range | 16, 32 or 48 blocks around you, or all (about 80); the miner still uses everything |
 
 ### Auto-mining (needs Baritone)
 

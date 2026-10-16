@@ -3,6 +3,25 @@
 All notable changes to **OreSim by gumark** are documented in this file.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.3.0] — 2026-10-16
+
+Minecraft version: **26.1.2** (Fabric). Java: 25+
+
+### Added
+- **Render styles** in the `/oresim` menu: *Veins* (default; each vein drawn
+  as one shape with only its outer edges and faces), *Boxes* (a see-through
+  filled box per block, slightly inset) and *Outlines* (the previous look).
+- **Fill** (off/low/medium/high), **line thickness** and **range** (16/32/48
+  blocks or all) settings.
+- **Show all / Hide all** buttons for the ore toggles.
+- **O key** opens the menu (rebindable); the first time the overlay is turned
+  on, a chat hint mentions it.
+
+### Changed
+- Ore toggles and display settings are saved in `config/oresim-settings.json`
+  instead of resetting on every restart.
+- Coal and lapis colours brightened so they stay visible as a fill.
+
 ## [1.2.0] — 2026-10-16
 
 Fork of gumark/fabric-oresim. Minecraft version: **26.1.2** (Fabric). Java: 25+

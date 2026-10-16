@@ -13,3 +13,6 @@ run-tester/
 *.iml
 .vscode/
 out/
+
+# Logs from running Minecraft classes locally
+logs/

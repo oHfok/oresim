@@ -5,12 +5,12 @@ import net.minecraft.world.level.block.Blocks;
 
 /** Everything the overlay can show; all types come from the seed simulation. */
 public enum OreType {
-    COAL("Coal", 0xFF2F2C36),
+    COAL("Coal", 0xFF4A4A4A),
     IRON("Iron", 0xFFECAD77),
     GOLD("Gold", 0xFFF7E51E),
     REDSTONE("Redstone", 0xFFF50717),
     DIAMOND("Diamond", 0xFF21F4FF),
-    LAPIS("Lapis", 0xFF081ABD),
+    LAPIS("Lapis", 0xFF2D5CFF),
     COPPER("Copper", 0xFFEF9700),
     EMERALD("Emerald", 0xFF1BD12D),
     QUARTZ("Quartz", 0xFFCDCDCD),

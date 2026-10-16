@@ -17,9 +17,12 @@ import net.minecraft.world.level.chunk.status.ChunkStatus;
 import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.world.level.levelgen.Heightmap;
+import net.minecraft.world.phys.Vec3;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
@@ -40,14 +43,9 @@ public class OreSim {
 
     private final Minecraft mc = Minecraft.getInstance();
     private final Map<Long, RenderChunk> chunkRenderers = new ConcurrentHashMap<>();
-    /** Pre-built stroke style per {@link OreType#ordinal()}; render never allocates a style. */
-    private static final GizmoStyle[] STYLES = new GizmoStyle[OreType.values().length];
-
-    static {
-        for (OreType type : OreType.values()) {
-            STYLES[type.ordinal()] = GizmoStyle.stroke(type.color);
-        }
-    }
+    private static final int TYPE_COUNT = OreType.values().length;
+    /** Boxes are drawn slightly smaller than a block, so neighbouring ores stay apart. */
+    private static final float BOX_INSET = -0.04F;
 
     /** Simulation for the current world and dimension; {@code null} while inactive. */
     private OreSimulator simulator;
@@ -342,6 +340,13 @@ public class OreSim {
         private final long[][] positionsByType;
         /** Total number of boxes this chunk renders, for the cheap early-out. */
         private final int boxCount;
+        /** Per type, built on first use; a pruned chunk is a new instance, so this never goes stale. */
+        private final VeinShape[] veinShapes = new VeinShape[TYPE_COUNT];
+
+        VeinShape veinShape(int typeIndex) {
+            if (veinShapes[typeIndex] == null) veinShapes[typeIndex] = new VeinShape(positionsByType[typeIndex]);
+            return veinShapes[typeIndex];
+        }
 
         RenderChunk(Map<Ore, Set<BlockPos>> ores, LongPredicate hidden) {
             // Deduplicate across placements of the same ore type (e.g. the
@@ -354,7 +359,7 @@ public class OreSim {
                     if (!hidden.test(packed)) list.add(packed);
                 }
             }
-            long[][] byType = new long[STYLES.length][];
+            long[][] byType = new long[TYPE_COUNT][];
             int boxes = 0;
             for (Map.Entry<OreType, PackedPositions> entry : builders.entrySet()) {
                 long[] positions = entry.getValue().toArray();
@@ -438,33 +443,167 @@ public class OreSim {
     // Rendering
     // ====================================
 
-    /** Emits a gizmo box for every simulated ore; called right before vanilla collects its gizmos. */
+    /** Settings and styles for one frame, so the per-ore loops only read fields. */
+    private record Frame(OreSimSettings.Style style, boolean[] enabled, Vec3 eye, double rangeSqr,
+                         int[] strokeColors, int[] fillColors, float lineWidth, GizmoStyle[] boxStyles) {
+        boolean inRange(Vec3 point) {
+            return point.distanceToSqr(eye) <= rangeSqr;
+        }
+
+        boolean inRange(long packedPos) {
+            int x = BlockPos.getX(packedPos);
+            int y = BlockPos.getY(packedPos);
+            int z = BlockPos.getZ(packedPos);
+            return eye.distanceToSqr(x + 0.5, y + 0.5, z + 0.5) <= rangeSqr;
+        }
+    }
+
+    /** Draws every simulated ore; called right before vanilla collects its gizmos. */
     public void render() {
         if (!active || mc.player == null || mc.level == null || simulator == null) return;
 
-        // One toggle snapshot per frame instead of an EnumSet lookup per
-        // ore group; toggles change via the GUI, never between frames.
-        boolean[] enabled = OverlayToggles.snapshot();
+        OreSimSettings.Fill fill = OreSimSettings.fill();
+        float lineWidth = OreSimSettings.lineWidth().width;
+        int range = OreSimSettings.range().blocks;
+        OreType[] types = OreType.values();
+        int[] strokeColors = new int[TYPE_COUNT];
+        int[] fillColors = new int[TYPE_COUNT];
+        GizmoStyle[] boxStyles = new GizmoStyle[TYPE_COUNT];
+        for (OreType type : types) {
+            int i = type.ordinal();
+            strokeColors[i] = type.color;
+            fillColors[i] = (fill.alpha << 24) | (type.color & 0xFFFFFF);
+            boxStyles[i] = fill == OreSimSettings.Fill.OFF
+                ? GizmoStyle.stroke(type.color, lineWidth)
+                : GizmoStyle.strokeAndFill(type.color, lineWidth, fillColors[i]);
+        }
+        Frame frame = new Frame(OreSimSettings.style(), OverlayToggles.snapshot(), mc.player.getEyePosition(),
+            range == Integer.MAX_VALUE ? Double.MAX_VALUE : (double) range * range,
+            strokeColors, fill == OreSimSettings.Fill.OFF ? null : fillColors, lineWidth, boxStyles);
+
         ChunkPos center = mc.player.chunkPosition();
-        forEachChunkInRange(center.x(), center.z(), (x, z) -> renderChunk(x, z, enabled));
+        forEachChunkInRange(center.x(), center.z(), (x, z) -> renderChunk(x, z, frame));
     }
 
-    private void renderChunk(int x, int z, boolean[] enabled) {
+    private void renderChunk(int x, int z, Frame frame) {
         RenderChunk chunk = chunkRenderers.get(ChunkPos.pack(x, z));
         if (chunk == null || chunk.boxCount == 0) return;
 
         long[][] positionsByType = chunk.positionsByType;
         for (int typeIndex = 0; typeIndex < positionsByType.length; typeIndex++) {
             long[] positions = positionsByType[typeIndex];
-            if (positions == null || !enabled[typeIndex]) continue;
-            GizmoStyle style = STYLES[typeIndex];
-            // Purely seed-driven rendering: every simulated position is drawn
-            // whether or not the player can already see it, and the client
-            // world is never consulted — so anti-xray fake blocks can neither
-            // suppress nor fake a box.
-            for (long packed : positions) {
-                Gizmos.cuboid(BlockPos.of(packed), style).setAlwaysOnTop();
+            if (positions == null || positions.length == 0 || !frame.enabled[typeIndex]) continue;
+            switch (frame.style) {
+                case VEINS -> renderVeins(chunk.veinShape(typeIndex), typeIndex, frame);
+                case BOXES -> {
+                    for (long packed : positions) {
+                        if (!frame.inRange(packed)) continue;
+                        Gizmos.cuboid(BlockPos.of(packed), BOX_INSET, frame.boxStyles[typeIndex]).setAlwaysOnTop();
+                    }
+                }
+                case OUTLINES -> {
+                    GizmoStyle outline = GizmoStyle.stroke(frame.strokeColors[typeIndex], frame.lineWidth);
+                    for (long packed : positions) {
+                        if (!frame.inRange(packed)) continue;
+                        Gizmos.cuboid(BlockPos.of(packed), outline).setAlwaysOnTop();
+                    }
+                }
             }
+        }
+    }
+
+    private static void renderVeins(VeinShape shape, int typeIndex, Frame frame) {
+        if (frame.fillColors != null) {
+            GizmoStyle faceStyle = GizmoStyle.fill(frame.fillColors[typeIndex]);
+            Vec3[] corners = shape.faceCorners;
+            for (int face = 0; face < shape.faceCenters.length; face++) {
+                if (!frame.inRange(shape.faceCenters[face])) continue;
+                int c = face * 4;
+                Gizmos.rect(corners[c], corners[c + 1], corners[c + 2], corners[c + 3], faceStyle).setAlwaysOnTop();
+            }
+        }
+        int color = frame.strokeColors[typeIndex];
+        for (int edge = 0; edge < shape.edgeStarts.length; edge++) {
+            if (!frame.inRange(shape.edgeMids[edge])) continue;
+            Gizmos.line(shape.edgeStarts[edge], shape.edgeEnds[edge], color, frame.lineWidth).setAlwaysOnTop();
+        }
+    }
+
+    /**
+     * The outside of a group of same-type ore blocks: faces not shared with
+     * another block of the group, and only the edges where the surface bends
+     * (outer and inner corners), so a vein reads as one shape.
+     */
+    private static final class VeinShape {
+        private final Vec3[] faceCorners;
+        private final Vec3[] faceCenters;
+        private final Vec3[] edgeStarts;
+        private final Vec3[] edgeEnds;
+        private final Vec3[] edgeMids;
+
+        VeinShape(long[] positions) {
+            LongOpenHashSet blocks = new LongOpenHashSet(positions);
+            List<Vec3> corners = new ArrayList<>();
+            List<Vec3> centers = new ArrayList<>();
+            List<Vec3> starts = new ArrayList<>();
+            List<Vec3> ends = new ArrayList<>();
+            // One "already drawn" set per edge direction, keyed by the edge's lower corner.
+            LongOpenHashSet[] drawnEdges = {new LongOpenHashSet(), new LongOpenHashSet(), new LongOpenHashSet()};
+            Direction.Axis[] axes = Direction.Axis.values();
+
+            for (long packed : positions) {
+                BlockPos pos = BlockPos.of(packed);
+                for (Direction side : Direction.values()) {
+                    if (!blocks.contains(pos.relative(side).asLong())) addFace(pos, side, corners, centers);
+                }
+                for (int axisIndex = 0; axisIndex < 3; axisIndex++) {
+                    Direction.Axis along = axes[axisIndex];
+                    Direction.Axis first = axes[(axisIndex + 1) % 3];
+                    Direction.Axis second = axes[(axisIndex + 2) % 3];
+                    for (int u = 0; u <= 1; u++) {
+                        for (int v = 0; v <= 1; v++) {
+                            Direction toFirst = Direction.fromAxisAndDirection(first, u == 1 ? Direction.AxisDirection.POSITIVE : Direction.AxisDirection.NEGATIVE);
+                            Direction toSecond = Direction.fromAxisAndDirection(second, v == 1 ? Direction.AxisDirection.POSITIVE : Direction.AxisDirection.NEGATIVE);
+                            boolean n1 = blocks.contains(pos.relative(toFirst).asLong());
+                            boolean n2 = blocks.contains(pos.relative(toSecond).asLong());
+                            boolean n12 = blocks.contains(pos.relative(toFirst).relative(toSecond).asLong());
+                            // Outer corner, inner corner, or a step where the surface turns.
+                            boolean bends = (!n1 && !n2) || (n1 && n2 && !n12) || (n1 != n2 && n12);
+                            if (!bends) continue;
+                            BlockPos lower = pos.relative(first, u).relative(second, v);
+                            if (!drawnEdges[axisIndex].add(lower.asLong())) continue;
+                            Vec3 start = Vec3.atLowerCornerOf(lower);
+                            starts.add(start);
+                            ends.add(start.add(Vec3.atLowerCornerOf(BlockPos.ZERO.relative(along, 1))));
+                        }
+                    }
+                }
+            }
+            this.faceCorners = corners.toArray(Vec3[]::new);
+            this.faceCenters = centers.toArray(Vec3[]::new);
+            this.edgeStarts = starts.toArray(Vec3[]::new);
+            this.edgeEnds = ends.toArray(Vec3[]::new);
+            this.edgeMids = new Vec3[edgeStarts.length];
+            for (int i = 0; i < edgeStarts.length; i++) {
+                edgeMids[i] = edgeStarts[i].add(edgeEnds[i]).scale(0.5);
+            }
+        }
+
+        private static void addFace(BlockPos pos, Direction side, List<Vec3> corners, List<Vec3> centers) {
+            Vec3 center = Vec3.atCenterOf(pos).add(Vec3.atLowerCornerOf(side.getUnitVec3i()).scale(0.5));
+            // Two unit vectors spanning the face.
+            Direction.Axis[] others = switch (side.getAxis()) {
+                case X -> new Direction.Axis[]{Direction.Axis.Y, Direction.Axis.Z};
+                case Y -> new Direction.Axis[]{Direction.Axis.X, Direction.Axis.Z};
+                case Z -> new Direction.Axis[]{Direction.Axis.X, Direction.Axis.Y};
+            };
+            Vec3 a = Vec3.atLowerCornerOf(BlockPos.ZERO.relative(others[0], 1)).scale(0.5);
+            Vec3 b = Vec3.atLowerCornerOf(BlockPos.ZERO.relative(others[1], 1)).scale(0.5);
+            corners.add(center.subtract(a).subtract(b));
+            corners.add(center.add(a).subtract(b));
+            corners.add(center.add(a).add(b));
+            corners.add(center.subtract(a).add(b));
+            centers.add(center);
         }
     }
 }

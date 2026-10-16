@@ -37,13 +37,19 @@ public class OreSimClient implements ClientModInitializer {
 
     private final OreSim oreSim = new OreSim();
     private KeyMapping toggleKey;
+    private KeyMapping menuKey;
     private boolean openGuiQueued;
+    /** Whether the "there's a menu" hint was shown this session. */
+    private boolean menuHintShown;
 
     @Override
     public void onInitializeClient() {
         KeyMapping.Category category = KeyMapping.Category.register(Identifier.fromNamespaceAndPath(MOD_ID, "main"));
         toggleKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
             "key.oresim.toggle", Compat.keyboardType(), InputConstants.KEY_X, category
+        ));
+        menuKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+            "key.oresim.menu", Compat.keyboardType(), InputConstants.KEY_O, category
         ));
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> onTick());
@@ -179,6 +185,16 @@ public class OreSimClient implements ClientModInitializer {
         }
         while (toggleKey.consumeClick()) {
             oreSim.toggle();
+            Minecraft client = Minecraft.getInstance();
+            if (oreSim.isActive() && !menuHintShown && client.player != null) {
+                menuHintShown = true;
+                client.player.sendSystemMessage(Component.literal("OreSim: press "
+                    + menuKey.getTranslatedKeyMessage().getString()
+                    + " (or /oresim) to choose which ores are shown and how they're drawn."));
+            }
+        }
+        while (menuKey.consumeClick()) {
+            Minecraft.getInstance().setScreenAndShow(new OreSimScreen());
         }
         oreSim.tick();
     }

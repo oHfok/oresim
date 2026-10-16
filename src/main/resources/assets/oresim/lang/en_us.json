@@ -1,5 +1,6 @@
 {
-  "key.category.oresim.main": "OreSim by gumark",
-  "key.category.main": "OreSim by gumark",
-  "key.oresim.toggle": "Toggle OreSim"
+  "key.category.oresim.main": "OreSim",
+  "key.category.main": "OreSim",
+  "key.oresim.toggle": "Toggle OreSim overlay",
+  "key.oresim.menu": "Open OreSim menu"
 }
