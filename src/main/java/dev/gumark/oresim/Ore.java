@@ -1,6 +1,5 @@
 package dev.gumark.oresim;
 
-import net.minecraft.client.Minecraft;
 import net.minecraft.core.Holder;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.core.HolderSet;
@@ -48,14 +47,11 @@ public class Ore {
     public boolean scattered;
     public List<Target> targets;
 
-    private Ore(PlacedFeature feature, int step, int index, OreType type) {
+    private Ore(PlacedFeature feature, int step, int index, OreType type, WorldGenerationContext heightContext) {
         this.step = step;
         this.index = index;
         this.type = type;
-
-        int bottom = Minecraft.getInstance().level.getMinY();
-        int height = Minecraft.getInstance().level.dimensionType().logicalHeight();
-        this.heightContext = new WorldGenerationContext(null, LevelHeightAccessor.create(bottom, height));
+        this.heightContext = heightContext;
 
         for (PlacementModifier modifier : feature.placement()) {
             if (modifier instanceof CountPlacement countPlacement) {
@@ -75,6 +71,7 @@ public class Ore {
     }
 
     private static void registerOre(
+        WorldGenerationContext heightContext,
         Map<PlacedFeature, Ore> map,
         List<FeatureSorter.StepFeatureData> indexer,
         HolderLookup.RegistryLookup<PlacedFeature> oreRegistry,
@@ -84,11 +81,23 @@ public class Ore {
     ) {
         PlacedFeature orePlacement = oreRegistry.getOrThrow(oreKey).value();
         int index = indexer.get(genStep).indexMapping().applyAsInt(orePlacement);
-        map.put(orePlacement, new Ore(orePlacement, genStep, index, type));
+        map.put(orePlacement, new Ore(orePlacement, genStep, index, type, heightContext));
     }
 
-    /** Builds the biome &rarr; ores map for the given dimension from vanilla's placed features. */
-    public static Map<ResourceKey<Biome>, List<Ore>> getRegistry(ResourceKey<Level> dimension) {
+    /**
+     * The height context the client simulates with: it has no chunk generator,
+     * so {@code HeightContextMixin} makes the generator calls null-safe and the
+     * height range comes from the level alone.
+     */
+    public static WorldGenerationContext clientHeightContext(int minY, int logicalHeight) {
+        return new WorldGenerationContext(null, LevelHeightAccessor.create(minY, logicalHeight));
+    }
+
+    /**
+     * Builds the biome &rarr; ores map for the given dimension from vanilla's
+     * placed features; {@code heightContext} resolves their height ranges.
+     */
+    public static Map<ResourceKey<Biome>, List<Ore>> getRegistry(ResourceKey<Level> dimension, WorldGenerationContext heightContext) {
         HolderLookup.Provider registry = Compat.worldLookup();
         HolderLookup.RegistryLookup<PlacedFeature> features = registry.lookupOrThrow(Registries.PLACED_FEATURE);
         WorldPreset worldPreset = registry.lookupOrThrow(Registries.WORLD_PRESET).getOrThrow(WorldPresets.NORMAL).value();
@@ -107,31 +116,31 @@ public class Ore {
         );
 
         Map<PlacedFeature, Ore> featureToOre = new HashMap<>();
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_COAL_LOWER, 6, OreType.COAL);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_COAL_UPPER, 6, OreType.COAL);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_IRON_MIDDLE, 6, OreType.IRON);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_IRON_SMALL, 6, OreType.IRON);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_IRON_UPPER, 6, OreType.IRON);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_GOLD, 6, OreType.GOLD);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_GOLD_LOWER, 6, OreType.GOLD);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_GOLD_EXTRA, 6, OreType.GOLD);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_GOLD_NETHER, 7, OreType.GOLD);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_GOLD_DELTAS, 7, OreType.GOLD);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_REDSTONE, 6, OreType.REDSTONE);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_REDSTONE_LOWER, 6, OreType.REDSTONE);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_DIAMOND, 6, OreType.DIAMOND);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_DIAMOND_BURIED, 6, OreType.DIAMOND);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_DIAMOND_LARGE, 6, OreType.DIAMOND);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_DIAMOND_MEDIUM, 6, OreType.DIAMOND);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_LAPIS, 6, OreType.LAPIS);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_LAPIS_BURIED, 6, OreType.LAPIS);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_COPPER, 6, OreType.COPPER);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_COPPER_LARGE, 6, OreType.COPPER);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_EMERALD, 6, OreType.EMERALD);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_QUARTZ_NETHER, 7, OreType.QUARTZ);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_QUARTZ_DELTAS, 7, OreType.QUARTZ);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_ANCIENT_DEBRIS_SMALL, 7, OreType.DEBRIS);
-        registerOre(featureToOre, indexer, features, OrePlacements.ORE_ANCIENT_DEBRIS_LARGE, 7, OreType.DEBRIS);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_COAL_LOWER, 6, OreType.COAL);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_COAL_UPPER, 6, OreType.COAL);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_IRON_MIDDLE, 6, OreType.IRON);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_IRON_SMALL, 6, OreType.IRON);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_IRON_UPPER, 6, OreType.IRON);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_GOLD, 6, OreType.GOLD);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_GOLD_LOWER, 6, OreType.GOLD);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_GOLD_EXTRA, 6, OreType.GOLD);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_GOLD_NETHER, 7, OreType.GOLD);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_GOLD_DELTAS, 7, OreType.GOLD);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_REDSTONE, 6, OreType.REDSTONE);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_REDSTONE_LOWER, 6, OreType.REDSTONE);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_DIAMOND, 6, OreType.DIAMOND);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_DIAMOND_BURIED, 6, OreType.DIAMOND);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_DIAMOND_LARGE, 6, OreType.DIAMOND);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_DIAMOND_MEDIUM, 6, OreType.DIAMOND);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_LAPIS, 6, OreType.LAPIS);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_LAPIS_BURIED, 6, OreType.LAPIS);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_COPPER, 6, OreType.COPPER);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_COPPER_LARGE, 6, OreType.COPPER);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_EMERALD, 6, OreType.EMERALD);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_QUARTZ_NETHER, 7, OreType.QUARTZ);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_QUARTZ_DELTAS, 7, OreType.QUARTZ);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_ANCIENT_DEBRIS_SMALL, 7, OreType.DEBRIS);
+        registerOre(heightContext, featureToOre, indexer, features, OrePlacements.ORE_ANCIENT_DEBRIS_LARGE, 7, OreType.DEBRIS);
 
         Map<ResourceKey<Biome>, List<Ore>> biomeOreMap = new HashMap<>();
         biomeList.forEach(biome -> {

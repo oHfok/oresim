@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "oresim_accuracy_tester",
+  "version": "1.0.0",
+  "name": "OreSim accuracy tester",
+  "description": "Development only: measures OreSim's predictions against a generated world on a dedicated server, then stops it.",
+  "license": "GPL-3.0-only",
+  "environment": "server",
+  "entrypoints": {
+    "server": [
+      "dev.gumark.oresim.tester.AccuracyTester"
+    ]
+  },
+  "mixins": [
+    "oresim-tester.mixins.json"
+  ],
+  "depends": {
+    "fabricloader": ">=0.19.0",
+    "fabric-api": "*"
+  }
+}

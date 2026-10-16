@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "dev.gumark.oresim.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "mixins": [
+    "CountPlacementModifierAccessor",
+    "HeightRangePlacementModifierAccessor",
+    "RarityFilterPlacementModifierAccessor"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

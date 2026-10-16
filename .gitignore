@@ -1,0 +1,15 @@
+# Gradle
+.gradle/
+build/
+
+# Local copy of the build output the original repository committed
+build-committed/
+
+# Accuracy tester: generated test worlds and reports
+run-tester/
+
+# IDEs
+.idea/
+*.iml
+.vscode/
+out/

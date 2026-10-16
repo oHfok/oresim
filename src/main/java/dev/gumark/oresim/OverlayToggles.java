@@ -19,6 +19,10 @@ public final class OverlayToggles {
         return enabled;
     }
 
+    public static EnumSet<OreType> enabledTypes() {
+        return EnumSet.complementOf(DISABLED);
+    }
+
     public static boolean isEnabled(OreType type) {
         return !DISABLED.contains(type);
     }

@@ -35,7 +35,8 @@ public final class Compat {
 
     public static OreData oreData(PlacedFeature feature) {
         var configured = feature.feature().value();
-        if (configured.feature() instanceof OreFeature
+        // ScatteredOreFeature is a sibling of OreFeature here, not a subclass.
+        if ((configured.feature() instanceof OreFeature || configured.feature() instanceof ScatteredOreFeature)
             && configured.config() instanceof OreConfiguration config) {
             List<Target> targets = new ArrayList<>();
             for (OreConfiguration.TargetBlockState target : config.targetStates) {

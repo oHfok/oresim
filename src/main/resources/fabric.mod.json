@@ -7,6 +7,13 @@
   "authors": [
     "gumark"
   ],
+  "contributors": [
+    "oHfok"
+  ],
+  "contact": {
+    "sources": "https://github.com/oHfok/fabric-oresim",
+    "issues": "https://github.com/oHfok/fabric-oresim/issues"
+  },
   "license": "GPL-3.0-only",
   "environment": "client",
   "entrypoints": {
@@ -22,5 +29,8 @@
     "minecraft": "~${minecraft}",
     "java": ">=${java}",
     "fabric-api": "*"
+  },
+  "suggests": {
+    "baritone": "*"
   }
 }

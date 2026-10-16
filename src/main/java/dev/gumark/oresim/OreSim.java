@@ -1,40 +1,34 @@
 package dev.gumark.oresim;
 
+import it.unimi.dsi.fastutil.longs.Long2IntOpenHashMap;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.resources.ResourceKey;
-import net.minecraft.util.Mth;
-import net.minecraft.util.RandomSource;
+import net.minecraft.core.Holder;
 import net.minecraft.world.level.ChunkPos;
 import net.minecraft.world.level.biome.Biome;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.ChunkAccess;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.status.ChunkStatus;
-import net.minecraft.world.level.levelgen.WorldgenRandom;
-import net.minecraft.world.level.levelgen.XoroshiroRandomSource;
-import net.minecraft.world.level.levelgen.heightproviders.HeightProvider;
 import net.minecraft.gizmos.GizmoStyle;
 import net.minecraft.gizmos.Gizmos;
 import net.minecraft.world.level.levelgen.Heightmap;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.BitSet;
 import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.function.LongPredicate;
 
 /**
- * Simulates vanilla ore decoration per chunk from the world seed and stores the
- * resulting ore positions so they can be rendered as boxes through walls.
+ * Runs the ore simulation ({@link OreSimulator}) for the chunks around the
+ * player and stores the resulting ore positions so they can be rendered as
+ * boxes through walls.
  *
  * <p>Derived from the OreSim module of
  * <a href="https://github.com/AntiCope/meteor-rejects">meteor-rejects</a>, ported
@@ -55,19 +49,64 @@ public class OreSim {
         }
     }
 
-    private long worldSeed;
-    private Map<ResourceKey<Biome>, List<Ore>> oreConfig;
-    /** Ore list used for chunks inside biomes that carry no specific ore list. */
-    private List<Ore> biomeFallback = List.of();
-    private List<Ore> dimensionOres = List.of();
+    /** Simulation for the current world and dimension; {@code null} while inactive. */
+    private OreSimulator simulator;
+    /** The client level as the simulation reads it. */
+    private OreSimulator.WorldView clientView;
     private boolean active;
     private int lastPlayerChunkX, lastPlayerChunkZ;
+    /** Mined-out predicted ores of the current world (live set from {@link MinedOres}). */
+    private LongOpenHashSet mined = new LongOpenHashSet();
+    /**
+     * Predictions shown wrong once exposed (live set from {@link MinedOres}).
+     * Kept apart from {@link #mined}: these are only hidden, the simulation
+     * still reads whatever block is really there.
+     */
+    private LongOpenHashSet disproven = new LongOpenHashSet();
+    /** Exposed predictions that don't show their ore yet, with the tick that was first seen. */
+    private final Long2IntOpenHashMap wrongSince = new Long2IntOpenHashMap();
+    private int ticks;
+    private int resolveScanTicks;
+    /** How often simulated positions are checked for having been mined or disproven. */
+    private static final int RESOLVE_SCAN_TICKS = 20;
+    /**
+     * How long an exposed prediction may look wrong before it is written off.
+     * Anti-xray reveals a block's real state a moment after it gets exposed.
+     */
+    private static final int REVEAL_GRACE_TICKS = 40;
 
     private ClientLevel lastLevel;
     private LocalPlayer lastPlayer;
 
     public boolean isActive() {
         return active;
+    }
+
+    /** Receives one simulated ore position, packed with {@link BlockPos#asLong()}. */
+    @FunctionalInterface
+    public interface OreConsumer {
+        void accept(OreType type, long packedPos);
+    }
+
+    /**
+     * Visits every simulated ore of the given types in the rendered range,
+     * whether or not the overlay shows them (used by the Baritone miner).
+     */
+    public void forEachOre(Set<OreType> wanted, OreConsumer consumer) {
+        if (!active || mc.player == null || simulator == null) return;
+        OreType[] types = OreType.values();
+        ChunkPos center = mc.player.chunkPosition();
+        forEachChunkInRange(center.x(), center.z(), (x, z) -> {
+            RenderChunk chunk = chunkRenderers.get(ChunkPos.pack(x, z));
+            if (chunk == null || chunk.boxCount == 0) return;
+            for (int typeIndex = 0; typeIndex < chunk.positionsByType.length; typeIndex++) {
+                long[] positions = chunk.positionsByType[typeIndex];
+                if (positions == null || !wanted.contains(types[typeIndex])) continue;
+                for (long packed : positions) {
+                    consumer.accept(types[typeIndex], packed);
+                }
+            }
+        });
     }
 
     public void toggle() {
@@ -96,8 +135,8 @@ public class OreSim {
     /** Clears all simulated data. */
     public void clear() {
         chunkRenderers.clear();
-        oreConfig = null;
-        biomeFallback = List.of();
+        simulator = null;
+        clientView = null;
     }
 
     /** Called when the seed changes while the simulation may be running. */
@@ -113,7 +152,13 @@ public class OreSim {
             if (active) reload();
             return;
         }
-        if (!active || oreConfig == null || mc.player == null) return;
+        if (!active || simulator == null || mc.player == null) return;
+        ticks++;
+        if (++resolveScanTicks >= RESOLVE_SCAN_TICKS) {
+            resolveScanTicks = 0;
+            detectResolved();
+        }
+        MinedOres.saveIfDirty(false);
         ChunkPos pos = mc.player.chunkPosition();
         if (pos.x() != lastPlayerChunkX || pos.z() != lastPlayerChunkZ) {
             lastPlayerChunkX = pos.x();
@@ -124,13 +169,22 @@ public class OreSim {
 
     /** Called for every chunk that finishes loading on the client. */
     public void onChunkLoad(LevelChunk chunk) {
-        if (!active || oreConfig == null || mc.player == null) return;
+        if (!active || simulator == null || mc.player == null) return;
         // Only chunks we actually render are simulated, so chunks streaming in
         // at the edge of the view distance cost nothing.
         ChunkPos center = mc.player.chunkPosition();
         ChunkPos pos = chunk.getPos();
-        if (Math.abs(pos.x() - center.x()) + Math.abs(pos.z() - center.z()) > CHUNK_RANGE) return;
-        doMathOnChunk(chunk);
+        // A chunk is only simulated once its neighbours are loaded (veins
+        // reach into them), so this chunk may complete one of theirs.
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                int x = pos.x() + dx;
+                int z = pos.z() + dz;
+                if (Math.abs(x - center.x()) + Math.abs(z - center.z()) > CHUNK_RANGE) continue;
+                LevelChunk candidate = mc.level.getChunkSource().getChunk(x, z, ChunkStatus.FULL, false);
+                if (candidate != null) doMathOnChunk(candidate);
+            }
+        }
     }
 
     /** Called when a chunk unloads; drops its cached simulation. */
@@ -141,12 +195,38 @@ public class OreSim {
     private void reload() {
         clear();
         Long seed = SeedStore.getSeed();
-        if (seed == null || mc.level == null) return;
+        ClientLevel world = mc.level;
+        if (seed == null || world == null) return;
 
-        worldSeed = seed;
-        oreConfig = Ore.getRegistry(mc.level.dimension());
-        dimensionOres = oreConfig.values().stream().flatMap(List::stream).distinct().collect(Collectors.toList());
-        biomeFallback = dimensionOres;
+        String worldKey = MinedOres.worldKey(seed, world.dimension().identifier());
+        mined = MinedOres.forWorld(worldKey);
+        disproven = MinedOres.forWorld(worldKey + "|disproven");
+        wrongSince.clear();
+        var heightContext = Ore.clientHeightContext(world.getMinY(), world.dimensionType().logicalHeight());
+        simulator = new OreSimulator(seed, Ore.getRegistry(world.dimension(), heightContext), mined::contains,
+            OreSimulator.Options.CURRENT);
+        clientView = new OreSimulator.WorldView() {
+            @Override
+            public BlockState getBlockState(BlockPos pos) {
+                return world.getBlockState(pos);
+            }
+
+            @Override
+            public int getHeight(Heightmap.Types type, int x, int z) {
+                return world.getHeight(type, x, z);
+            }
+
+            @Override
+            public boolean isOutsideBuildHeight(int y) {
+                return world.isOutsideBuildHeight(y);
+            }
+
+            @Override
+            public Holder<Biome> getBiome(BlockPos pos) {
+                // Block position, with biome blending: the same lookup as vanilla's BiomeFilter.
+                return world.getBiome(pos);
+            }
+        };
 
         if (mc.player != null) {
             ChunkPos center = mc.player.chunkPosition();
@@ -154,6 +234,77 @@ public class OreSim {
             lastPlayerChunkZ = center.z();
         }
         sweepLoadedChunks();
+    }
+
+    /**
+     * Forgets the mined and disproven positions of the current world and
+     * re-simulates; returns how many were forgotten, or -1 when the overlay is off.
+     */
+    public int clearMined() {
+        if (!active) return -1;
+        int count = mined.size() + disproven.size();
+        mined.clear();
+        disproven.clear();
+        MinedOres.markDirty();
+        reload();
+        return count;
+    }
+
+    /** Whether a predicted position was mined out or disproven, i.e. is no longer shown. */
+    public boolean isResolved(long packedPos) {
+        return mined.contains(packedPos) || disproven.contains(packedPos);
+    }
+
+    /**
+     * Stops showing predictions that are settled:
+     * <ul>
+     *   <li>gone (air or fluid): mined. A simulated position always held a
+     *       solid target block when simulated, so it only turns into air by
+     *       being dug out.</li>
+     *   <li>exposed but not the predicted ore: disproven. Anti-xray never
+     *       disguises exposed blocks, so what the client sees there is real.</li>
+     * </ul>
+     */
+    private void detectResolved() {
+        ClientLevel world = mc.level;
+        if (world == null || mc.player == null) return;
+        boolean[] changed = {false};
+        // Only the rendered range: nothing outside it is drawn or mined anyway.
+        ChunkPos center = mc.player.chunkPosition();
+        forEachChunkInRange(center.x(), center.z(), (x, z) -> {
+            long key = ChunkPos.pack(x, z);
+            RenderChunk chunk = chunkRenderers.get(key);
+            if (chunk == null || chunk.boxCount == 0) return;
+            RenderChunk pruned = chunk.prune((type, packed) -> {
+                BlockPos pos = BlockPos.of(packed);
+                BlockState state = world.getBlockState(pos);
+                if (state.isAir() || !state.getFluidState().isEmpty()) {
+                    mined.add(packed);
+                    return true;
+                }
+                if (type.isOre(state.getBlock()) || !isExposed(world, pos)) {
+                    wrongSince.remove(packed);
+                    return false;
+                }
+                if (!wrongSince.containsKey(packed)) wrongSince.put(packed, ticks);
+                if (ticks - wrongSince.get(packed) < REVEAL_GRACE_TICKS) return false;
+                wrongSince.remove(packed);
+                disproven.add(packed);
+                return true;
+            });
+            if (pruned != chunk) {
+                chunkRenderers.put(key, pruned);
+                changed[0] = true;
+            }
+        });
+        if (changed[0]) MinedOres.markDirty();
+    }
+
+    private static boolean isExposed(ClientLevel world, BlockPos pos) {
+        for (Direction direction : Direction.values()) {
+            if (!world.getBlockState(pos.relative(direction)).canOcclude()) return true;
+        }
+        return false;
     }
 
     /** Simulates every loaded chunk in range that has not been simulated yet. */
@@ -192,14 +343,15 @@ public class OreSim {
         /** Total number of boxes this chunk renders, for the cheap early-out. */
         private final int boxCount;
 
-        RenderChunk(Map<Ore, Set<BlockPos>> ores) {
+        RenderChunk(Map<Ore, Set<BlockPos>> ores, LongPredicate hidden) {
             // Deduplicate across placements of the same ore type (e.g. the
             // three iron placements) so overlapping veins don't draw twice.
             HashMap<OreType, PackedPositions> builders = new HashMap<>();
             for (Map.Entry<Ore, Set<BlockPos>> entry : ores.entrySet()) {
                 PackedPositions list = builders.computeIfAbsent(entry.getKey().type, t -> new PackedPositions());
                 for (BlockPos pos : entry.getValue()) {
-                    list.add(pos.asLong());
+                    long packed = pos.asLong();
+                    if (!hidden.test(packed)) list.add(packed);
                 }
             }
             long[][] byType = new long[STYLES.length][];
@@ -212,6 +364,34 @@ public class OreSim {
             this.positionsByType = byType;
             this.boxCount = boxes;
         }
+
+        private RenderChunk(long[][] positionsByType, int boxCount) {
+            this.positionsByType = positionsByType;
+            this.boxCount = boxCount;
+        }
+
+        /** This chunk without the positions {@code gone} accepts; itself when nothing is removed. */
+        RenderChunk prune(PositionTest gone) {
+            OreType[] types = OreType.values();
+            long[][] byType = null;
+            int boxes = boxCount;
+            for (int typeIndex = 0; typeIndex < positionsByType.length; typeIndex++) {
+                long[] positions = positionsByType[typeIndex];
+                if (positions == null) continue;
+                OreType type = types[typeIndex];
+                long[] kept = Arrays.stream(positions).filter(packed -> !gone.test(type, packed)).toArray();
+                if (kept.length == positions.length) continue;
+                if (byType == null) byType = positionsByType.clone();
+                byType[typeIndex] = kept;
+                boxes -= positions.length - kept.length;
+            }
+            return byType == null ? this : new RenderChunk(byType, boxes);
+        }
+    }
+
+    @FunctionalInterface
+    private interface PositionTest {
+        boolean test(OreType type, long packedPos);
     }
 
     /** Tiny growable long list with a linear-scan "already present" check. */
@@ -238,58 +418,20 @@ public class OreSim {
         var chunkPos = chunk.getPos();
         long chunkKey = chunkPos.pack();
         ClientLevel world = mc.level;
-        if (world == null || oreConfig == null || chunkRenderers.containsKey(chunkKey)) return;
-
-        int chunkX = chunkPos.x() << 4;
-        int chunkZ = chunkPos.z() << 4;
-        WorldgenRandom random = new WorldgenRandom(new XoroshiroRandomSource(0L));
-        long populationSeed = random.setDecorationSeed(worldSeed, chunkX, chunkZ);
-
-        HashMap<Ore, Set<BlockPos>> h = new HashMap<>();
-        // (kept as a per-ore set during simulation; render-time grouping happens once below)
-        // Every ore of this dimension is attempted; the biome check below
-        // filters each candidate position exactly, so scanning the full biome
-        // palettes of nine chunks up front is unnecessary.
-        for (Ore ore : dimensionOres) {
-            HashSet<BlockPos> ores = new HashSet<>();
-            random.setFeatureSeed(populationSeed, ore.index, ore.step);
-
-            int repeat = ore.count.sample(random);
-            for (int i = 0; i < repeat; i++) {
-                if (ore.rarity != 1F && random.nextFloat() >= 1 / ore.rarity) {
-                    continue;
+        if (world == null || simulator == null || chunkRenderers.containsKey(chunkKey)) return;
+        // Veins reach into the neighbouring chunks; reading those while they
+        // aren't loaded (as air) would derail the simulation. onChunkLoad
+        // retries once they arrive.
+        for (int dz = -1; dz <= 1; dz++) {
+            for (int dx = -1; dx <= 1; dx++) {
+                if (world.getChunkSource().getChunk(chunkPos.x() + dx, chunkPos.z() + dz, ChunkStatus.FULL, false) == null) {
+                    return;
                 }
-                int x = random.nextInt(16) + chunkX;
-                int z = random.nextInt(16) + chunkZ;
-                int y = ore.heightProvider.sample(random, ore.heightContext);
-                BlockPos origin = new BlockPos(x, y, z);
-
-                ResourceKey<Biome> biome = chunk.getNoiseBiome(x, y, z).unwrapKey().orElse(null);
-                if (biome == null || !getDefaultOres(biome).contains(ore)) {
-                    continue;
-                }
-
-                if (ore.scattered) {
-                    ores.addAll(generateHidden(world, random, origin, ore));
-                } else {
-                    ores.addAll(generateNormal(world, random, origin, ore));
-                }
-            }
-            if (!ores.isEmpty()) {
-                h.put(ore, ores);
             }
         }
         // Pre-bucket the simulated positions by ore type once, so each frame
         // only walks flat position arrays for the enabled types.
-        chunkRenderers.put(chunkKey, new RenderChunk(h));
-    }
-
-    private List<Ore> getDefaultOres(ResourceKey<Biome> biomeRegistryKey) {
-        List<Ore> ores = oreConfig.get(biomeRegistryKey);
-        // This fallback is hit for every ore placement attempt in unspecified
-        // biomes, so the "first biome's list" is cached instead of re-streamed
-        // on every call.
-        return ores != null ? ores : biomeFallback;
+        chunkRenderers.put(chunkKey, new RenderChunk(simulator.simulateChunk(chunkPos, clientView), this::isResolved));
     }
 
     // ====================================
@@ -298,7 +440,7 @@ public class OreSim {
 
     /** Emits a gizmo box for every simulated ore; called right before vanilla collects its gizmos. */
     public void render() {
-        if (!active || mc.player == null || mc.level == null || oreConfig == null) return;
+        if (!active || mc.player == null || mc.level == null || simulator == null) return;
 
         // One toggle snapshot per frame instead of an EnumSet lookup per
         // ore group; toggles change via the GUI, never between frames.
@@ -324,171 +466,5 @@ public class OreSim {
                 Gizmos.cuboid(BlockPos.of(packed), style).setAlwaysOnTop();
             }
         }
-    }
-
-    // ====================================
-    // Vanilla ore generation
-    // ====================================
-
-    private List<BlockPos> generateNormal(ClientLevel world, WorldgenRandom random, BlockPos blockPos, Ore ore) {
-        int veinSize = ore.size;
-        float f = random.nextFloat() * 3.1415927F;
-        float g = (float) veinSize / 8.0F;
-        int i = Mth.ceil(((float) veinSize / 16.0F * 2.0F + 1.0F) / 2.0F);
-        double d = (double) blockPos.getX() + Math.sin(f) * (double) g;
-        double e = (double) blockPos.getX() - Math.sin(f) * (double) g;
-        double h = (double) blockPos.getZ() + Math.cos(f) * (double) g;
-        double j = (double) blockPos.getZ() - Math.cos(f) * (double) g;
-        double l = (blockPos.getY() + random.nextInt(3) - 2);
-        double m = (blockPos.getY() + random.nextInt(3) - 2);
-        int n = blockPos.getX() - Mth.ceil(g) - i;
-        int o = blockPos.getY() - 2 - i;
-        int p = blockPos.getZ() - Mth.ceil(g) - i;
-        int q = 2 * (Mth.ceil(g) + i);
-        int r = 2 * (2 + i);
-        for (int s = n; s <= n + q; ++s) {
-            for (int t = p; t <= p + q; ++t) {
-                if (o <= world.getHeight(Heightmap.Types.MOTION_BLOCKING, s, t)) {
-                    return generateVeinPart(world, random, veinSize, d, e, h, j, l, m, n, o, p, q, r, ore);
-                }
-            }
-        }
-        return new ArrayList<>();
-    }
-
-    private List<BlockPos> generateVeinPart(ClientLevel world, WorldgenRandom random, int veinSize, double startX, double endX, double startZ, double endZ, double startY, double endY, int x, int y, int z, int size, int i, Ore ore) {
-        BitSet bitSet = new BitSet(size * i * size);
-        BlockPos.MutableBlockPos mutable = new BlockPos.MutableBlockPos();
-        double[] ds = new double[veinSize * 4];
-        List<BlockPos> poses = new ArrayList<>();
-        int n;
-        double p;
-        double q;
-        double r;
-        double s;
-        for (n = 0; n < veinSize; ++n) {
-            float f = (float) n / (float) veinSize;
-            p = Mth.lerp(f, startX, endX);
-            q = Mth.lerp(f, startY, endY);
-            r = Mth.lerp(f, startZ, endZ);
-            s = random.nextDouble() * (double) veinSize / 16.0D;
-            double m = ((double) (Mth.sin(3.1415927F * f) + 1.0F) * s + 1.0D) / 2.0D;
-            ds[n * 4] = p;
-            ds[n * 4 + 1] = q;
-            ds[n * 4 + 2] = r;
-            ds[n * 4 + 3] = m;
-        }
-        for (n = 0; n < veinSize - 1; ++n) {
-            if (!(ds[n * 4 + 3] <= 0.0D)) {
-                for (int o = n + 1; o < veinSize; ++o) {
-                    if (!(ds[o * 4 + 3] <= 0.0D)) {
-                        p = ds[n * 4] - ds[o * 4];
-                        q = ds[n * 4 + 1] - ds[o * 4 + 1];
-                        r = ds[n * 4 + 2] - ds[o * 4 + 2];
-                        s = ds[n * 4 + 3] - ds[o * 4 + 3];
-                        if (s * s > p * p + q * q + r * r) {
-                            if (s > 0.0D) {
-                                ds[o * 4 + 3] = -1.0D;
-                            } else {
-                                ds[n * 4 + 3] = -1.0D;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        for (n = 0; n < veinSize; ++n) {
-            double u = ds[n * 4 + 3];
-            if (!(u < 0.0D)) {
-                double v = ds[n * 4];
-                double w = ds[n * 4 + 1];
-                double aa = ds[n * 4 + 2];
-                int ab = Math.max(Mth.floor(v - u), x);
-                int ac = Math.max(Mth.floor(w - u), y);
-                int ad = Math.max(Mth.floor(aa - u), z);
-                int ae = Math.max(Mth.floor(v + u), ab);
-                int af = Math.max(Mth.floor(w + u), ac);
-                int ag = Math.max(Mth.floor(aa + u), ad);
-                for (int ah = ab; ah <= ae; ++ah) {
-                    double ai = ((double) ah + 0.5D - v) / u;
-                    if (ai * ai < 1.0D) {
-                        for (int aj = ac; aj <= af; ++aj) {
-                            double ak = ((double) aj + 0.5D - w) / u;
-                            if (ai * ai + ak * ak < 1.0D) {
-                                for (int al = ad; al <= ag; ++al) {
-                                    double am = ((double) al + 0.5D - aa) / u;
-                                    if (ai * ai + ak * ak + am * am < 1.0D) {
-                                        int an = ah - x + (aj - y) * size + (al - z) * size * i;
-                                        if (!bitSet.get(an)) {
-                                            bitSet.set(an);
-                                            mutable.set(ah, aj, al);
-                                            if (!world.isOutsideBuildHeight(aj) && canPlaceOre(world, random, mutable, ore)) {
-                                                poses.add(mutable.immutable());
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        return poses;
-    }
-
-    private List<BlockPos> generateHidden(ClientLevel world, WorldgenRandom random, BlockPos origin, Ore ore) {
-        List<BlockPos> poses = new ArrayList<>();
-        int count = random.nextInt(ore.size + 1);
-        for (int j = 0; j < count; ++j) {
-            int size = Math.min(j, 7);
-            int x = randomCoord(random, size) + origin.getX();
-            int y = randomCoord(random, size) + origin.getY();
-            int z = randomCoord(random, size) + origin.getZ();
-            BlockPos pos = new BlockPos(x, y, z);
-            if (canPlaceOre(world, random, pos, ore)) {
-                poses.add(pos);
-            }
-        }
-        return poses;
-    }
-
-    private int randomCoord(WorldgenRandom random, int size) {
-        return Math.round((random.nextFloat() - random.nextFloat()) * (float) size);
-    }
-
-    // ====================================
-    // Vanilla placement decisions
-    // ====================================
-
-    /**
-     * Mirrors {@code AbstractOreFeature#canPlaceOre}: the block must be a valid
-     * replacement target (or already hold the ore, since the real world is
-     * generated), then the air-exposure rule decides.
-     */
-    private boolean canPlaceOre(ClientLevel world, RandomSource random, BlockPos pos, Ore ore) {
-        BlockState state = world.getBlockState(pos);
-        for (Target target : ore.targets) {
-            if (target.test().test(state, pos, random) || state.equals(target.state())) {
-                return shouldPlace(world, random, pos, ore.discardOnAirChance);
-            }
-        }
-        return false;
-    }
-
-    /** Mirrors vanilla's {@code shouldSkipAirCheck} + {@code isAdjacentToAir} logic. */
-    private boolean shouldPlace(ClientLevel world, RandomSource random, BlockPos pos, float discardOnAir) {
-        if (discardOnAir <= 0F) return true;
-        if (discardOnAir < 1F && random.nextFloat() >= discardOnAir) return true;
-        return !isAdjacentToAir(world, pos);
-    }
-
-    private boolean isAdjacentToAir(ClientLevel world, BlockPos pos) {
-        for (Direction direction : Direction.values()) {
-            if (world.getBlockState(pos.offset(direction.getUnitVec3i())).isAir()) {
-                return true;
-            }
-        }
-        return false;
     }
 }

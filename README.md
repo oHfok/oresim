@@ -1,82 +1,179 @@
-# OreSim by gumark
+# OreSim + Baritone auto-miner
 
-A standalone Fabric mod for **Minecraft 26.x** (26.1.2 – 26.3) that predicts where ores generated
-from the world seed and renders them as colored boxes through walls — no xray
-resource pack, no Meteor Client required.
+A client-side Fabric mod for **Minecraft 26.1.2** that predicts where ores
+generated from the world seed, shows them as boxes through walls, and can
+drive [Baritone](https://github.com/cabaletta/baritone) to mine them for you.
+It works behind server anti-xray, because the positions come from the seed,
+not from what the server sends.
 
-Extracted from the `OreSim` module of
-[meteor-rejects](https://github.com/AntiCope/meteor-rejects) and rebuilt as its
-own client-side mod.
+This is a fork of [gumark/fabric-oresim](https://github.com/gumark/fabric-oresim),
+itself a standalone port of the OreSim module of
+[meteor-rejects](https://github.com/AntiCope/meteor-rejects). What this fork
+adds is listed under [Changes in this fork](#changes-in-this-fork).
+
+> Using x-ray or automated mining on a server you don't run may break its
+> rules and get you banned. Check first.
+
+## Features
+
+- **Seed-based ore overlay**: coal, iron, gold, redstone, diamond, lapis,
+  copper, emerald, nether quartz, nether gold and ancient debris, drawn through
+  walls within 5 chunks. No x-ray resource pack, no Meteor Client needed.
+- **Measured accuracy**: about 99% of predicted diamonds are real behind
+  anti-xray, and 100% in the nether ([details](#prediction-accuracy)).
+- **Auto-mining with Baritone** (optional): mines the ores you choose, follows
+  veins, mines visible ores the prediction missed, picks up the drops, and
+  tunnels onward when nothing is left in range.
+- **Remembers what's done**: mined ores and predictions proven wrong disappear
+  from the overlay and are saved per server, seed and dimension.
+
+## Installation
+
+1. Install [Fabric Loader](https://fabricmc.net/use/) 0.19+ for Minecraft 26.1.2.
+2. Put these in your `mods` folder:
+   - the OreSim jar from [Releases](../../releases)
+   - [Fabric API](https://modrinth.com/mod/fabric-api) for 26.1.2
+   - *(optional, for auto-mining)* `baritone-api-fabric-1.18.0.jar` from
+     [Baritone v1.18.0](https://github.com/cabaletta/baritone/releases/tag/v1.18.0)
+3. Java 25 or newer.
+
+Works alongside Meteor Client.
 
 ## Usage
+
+### Overlay
 
 | Action | How |
 | --- | --- |
 | Toggle the overlay | **X** key (rebindable in Controls) |
-| Set the world seed | `/setoresimseed <seed>` |
-| Choose what is shown | `/oresim` opens the toggle GUI |
+| Set the world seed (multiplayer) | `/setoresimseed <seed>` (remembered per server) |
+| Choose which ores are shown | `/oresim` opens the toggle menu |
+| Show mined/disproven ores again | `/oresim clearmined` |
 
-- **Singleplayer:** the seed is detected automatically — just press **X**.
-- **Multiplayer:** run `/setoresimseed <seed>` once per world, then press **X**.
-  Seeds follow vanilla rules: numeric text is used as a literal seed, any other
-  text is hashed (like typing a word into the world creation screen).
-- Rendering is **purely seed-driven**: every simulated position gets a box,
-  including ores you can already see, and the client world state is never
-  consulted. Anti-xray fake blocks can therefore neither suppress nor fake a
-  box — the boxes always show what the seed says actually generated.
-- The `/oresim` GUI has an on/off toggle for every ore type.
+In singleplayer the seed is read from the world. Seeds follow vanilla rules:
+numeric text is a literal seed, other text is hashed like the world-creation
+screen does.
 
-The simulation mirrors vanilla's ore decoration (count, rarity, height range,
-vein shape, air-exposure discard) driven by the vanilla placed-feature data for
-the current dimension, so the positions match what the game actually generated.
+### Auto-mining (needs Baritone)
 
-## Requirements
+| Action | How |
+| --- | --- |
+| Mine specific ores | `/oresim mine diamond debris` (tab-completes; spaces or commas) |
+| Mine whatever the overlay shows | `/oresim mine` |
+| Stop | `/oresim stop` or Baritone's `#stop` |
 
-- Minecraft 26.1.2, 26.2, or 26.3 — use the jar matching your game version
-  (every jar name ends in `-mc<minecraft-version>`)
-- [Fabric Loader](https://fabricmc.net/use/) 0.19+
-- [Fabric API](https://modrinth.com/mod/fabric-api) for your Minecraft version
+Ore names: `coal`, `iron`, `gold`, `redstone`, `diamond`, `lapis`, `copper`,
+`emerald`, `quartz`, `debris` (also `ancient_debris`, `netherite`).
 
-Install the built jar in your `mods` folder alongside Fabric API. Minecraft
-1.21.11 and older use a different rendering/worldgen API and are not supported
-yet.
+Tip: go to the right depth first (around Y -58 for diamonds), face the way you
+want to go, then start. What the miner does:
+
+- Gives Baritone the nearest predicted ores as goals, so it digs to ores
+  anti-xray hides (Baritone's own `#mine` only finds ores the client can see).
+- Mines ores you can actually see (exposed to air, within 10 blocks) as well,
+  and prefers them. Digging into a vein exposes the rest of it, so veins get
+  finished even where the prediction only caught part of one.
+- Breaks an ore on the spot when it's within reach and in line of sight, like
+  `#mine`, but only with a hotbar tool that gets the drop (iron pickaxe or
+  better for diamonds), never the block underfoot or an ore touching lava.
+- Picks up the drops of the ores it mines (within 12 blocks) before moving on.
+- When nothing is left in range, tunnels onward in the direction you faced at
+  the Y level you started at; turns 90° if blocked, stops after four tries.
+
+### Mined and wrong predictions
+
+A predicted ore that turns into air (mined by you, the miner or anyone else) is
+marked as mined. A predicted ore that gets exposed to air but still isn't that
+ore 2 seconds later is marked as wrong: anti-xray never disguises exposed
+blocks, so the client sees the truth there. Both stop being shown or mined,
+and are saved in `config/oresim-mined.json`.
+
+## Prediction accuracy
+
+The simulation replays vanilla ore generation against the blocks the client
+sees. Measured with the [accuracy tester](#accuracy-tester) on three seeds, 289
+chunks each, client behind anti-xray:
+
+| | Original port | This fork |
+|---|---|---|
+| Diamonds: predicted that are real / real that are predicted | 98.1–98.5% / 98.4–99.3% | 98.7–99.7% / 98.7–99.9% |
+| All ores: predicted that are real / real that are predicted | 79–83% / 74–79% | 96.5–99.5% / 89.6–99.4% |
+| Nether (gold, quartz, debris) | 99.7–99.9% / 100% | 100% / 100% |
+
+What it corrects for, compared with the original port:
+
+- **Surface height** (the big one): vanilla only places a vein where the
+  terrain reaches it, measured without water and before trees exist. The
+  original used a heightmap that counts water and leaves, which derailed coal,
+  copper, lapis and iron near the surface (coal ~60% → 90–98%, copper
+  50–72% → 97–100%).
+- **Overlapping veins**: an ore placed earlier can't be replaced, in vanilla's
+  feature order, even where anti-xray shows it as stone.
+- **Neighbouring chunks**: a chunk is only simulated once the chunks its veins
+  reach into are loaded.
+- **Mined ores**: still count as the ore they were, so re-simulating a mined
+  area doesn't derail the rest of the vein.
+- **Biome lookup**: the same block-position lookup vanilla uses.
+
+Known limits: stone dug away by *other* players can't be told apart from a
+natural cave, so a vein crossing someone else's tunnel may be predicted wrong
+(dense strip mines cost about 1–2% of diamonds). Iron and copper also
+generate in large noise-based veins that aren't simulated, which lowers their
+recall on some seeds. Chunks generated by older Minecraft versions, or with
+world-generation datapacks, won't match.
 
 ## Building
 
 Requires JDK 25.
 
 ```bash
-gradle build        # or ./gradlew build after generating the wrapper
+./gradlew build -Pmc=26.1.2 -Pfapi=0.155.3+26.1.2
 ```
 
-The mod jar is written to
-`build/libs/oresim-by-gumark-<version>-mc<minecraft-version>.jar`.
+The jar is written to `build/libs/oresim-by-gumark-<version>-mc26.1.2.jar`.
 
-To build for another Minecraft version of the same API generation, override the
-target versions (use the matching Fabric API build):
+It also builds for 26.2 and 26.3 (`-Pmc=26.2 -Pfapi=0.161.0+26.2`,
+`-Pmc=26.3 -Pfapi=0.161.0+26.3`), but only 26.1.2 has been tested in game.
+Auto-mining is compiled against Baritone 1.18.0 (26.1); with other Minecraft
+versions use the matching Baritone release, untested.
+
+### Accuracy tester
+
+`src/tester` is a separate development-only mod (never in the release jar). It
+starts a real dedicated server, generates a world, runs the mod's own
+simulation against what a client would see, and compares with the real ores:
 
 ```bash
-gradle build -Pmc=26.2 -Pfapi=0.161.0+26.2
-gradle build -Pmc=26.1.2 -Pfapi=0.155.3+26.1.2
+./gradlew runAccuracyTest -Pmc=26.1.2 -Pfapi=0.155.3+26.1.2 -Pseed=12345
+# optional: -Pradius=8 (chunks around 0,0)  -Pdimensions=overworld,nether
 ```
 
-## Notes
+The report goes to `run-tester/oresim-accuracy-<seed>.md`: precision and recall
+for the original simulation, the current one, the current one with each
+correction switched off, with and without anti-xray, and with strip mines. A
+run accepts the Minecraft EULA in `run-tester/eula.txt` for that local test
+server and keeps one world per seed there (about 20 MB each).
 
-- Rendering uses the vanilla gizmo system and is always drawn on top, so ores
-  are visible through terrain.
-- The overlay covers a 5-chunk taxi-cap radius around the player.
-- World edits by players (or anything that changes blocks before the
-  simulation sees the chunk) can cause rare false positives. Because rendering
-  is seed-only, boxes stay even after the ore itself has been mined out.
+## Changes in this fork
+
+Compared with gumark/fabric-oresim 1.1.0 (full list in [CHANGELOG.md](CHANGELOG.md)):
+
+- Fixed two crashes on Minecraft 26.1.2 (at startup, and when turning the
+  overlay on).
+- Prediction accuracy fixes listed above, and the accuracy tester.
+- Auto-mining with Baritone.
+- Mined and disproven ores are remembered and hidden.
 
 ## Credits
 
-OreSim was originally part of
-[meteor-rejects](https://github.com/AntiCope/meteor-rejects) (the OreSim module
-and its worldgen port of vanilla's ore feature). This standalone version is a
-port to standalone Fabric for Minecraft 26.3 by gumark.
+- [gumark/fabric-oresim](https://github.com/gumark/fabric-oresim): the
+  standalone Fabric port this fork builds on.
+- [meteor-rejects](https://github.com/AntiCope/meteor-rejects): the original
+  OreSim module and its port of vanilla's ore generation.
+- [Baritone](https://github.com/cabaletta/baritone) (LGPL-3.0): pathing and
+  mining. Not bundled; see [libs/README.md](libs/README.md).
 
 ## License
 
-GPL-3.0-only — see [LICENSE](LICENSE). This is a derivative work of
-meteor-rejects, which is also GPL-3.0.
+GPL-3.0-only, see [LICENSE](LICENSE). A derivative work of gumark/fabric-oresim
+and meteor-rejects, both GPL-3.0.

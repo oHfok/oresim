@@ -1,9 +1,13 @@
 package dev.gumark.oresim;
 
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.suggestion.Suggestions;
+import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import com.mojang.blaze3d.platform.InputConstants;
+import dev.gumark.oresim.baritone.OreMineProcess;
 import dev.gumark.oresim.compat.Compat;
 import net.fabricmc.api.ClientModInitializer;
+import net.fabricmc.loader.api.FabricLoader;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientChunkEvents;
@@ -16,6 +20,12 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
+import java.util.Arrays;
+import java.util.EnumSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+
 /**
  * OreSim by gumark - predicts and renders ore locations from the world seed.
  *
@@ -23,6 +33,7 @@ import net.minecraft.resources.Identifier;
  */
 public class OreSimClient implements ClientModInitializer {
     public static final String MOD_ID = "oresim";
+    private static final String BARITONE_MISSING = "OreSim: auto-mining needs Baritone installed.";
 
     private final OreSim oreSim = new OreSim();
     private KeyMapping toggleKey;
@@ -46,7 +57,10 @@ public class OreSimClient implements ClientModInitializer {
         // The seed is persisted here on disconnect and dropped, so it can
         // never carry over to a different server. Singleplayer reads the real
         // seed from the integrated server and is unaffected.
-        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> SeedStore.rememberCurrentServerSeed());
+        ClientPlayConnectionEvents.DISCONNECT.register((handler, client) -> {
+            SeedStore.rememberCurrentServerSeed();
+            MinedOres.saveIfDirty(true);
+        });
         ClientPlayConnectionEvents.JOIN.register((handler, sender, client) -> {
             Long remembered = SeedStore.restoredSeedOrNull();
             if (remembered != null) {
@@ -63,7 +77,51 @@ public class OreSimClient implements ClientModInitializer {
                 // queue the screen for the next client tick instead.
                 openGuiQueued = true;
                 return 1;
-            }));
+            })
+                // OreMineProcess is only touched when Baritone is present, so
+                // its Baritone imports never load without it.
+                .then(ClientCommands.literal("mine")
+                    .executes(context -> {
+                        context.getSource().sendFeedback(Component.literal(
+                            hasBaritone() ? OreMineProcess.start(oreSim, null) : BARITONE_MISSING));
+                        return 1;
+                    })
+                    // e.g. "/oresim mine diamond debris"
+                    .then(ClientCommands.argument("ores", StringArgumentType.greedyString())
+                        .suggests((context, builder) -> suggestOreNames(builder))
+                        .executes(context -> {
+                            String input = StringArgumentType.getString(context, "ores");
+                            EnumSet<OreType> types = EnumSet.noneOf(OreType.class);
+                            for (String name : input.toLowerCase(Locale.ROOT).split("[\\s,]+")) {
+                                if (name.isEmpty()) continue;
+                                OreType type = oreTypeByName(name);
+                                if (type == null) {
+                                    context.getSource().sendError(Component.literal(
+                                        "OreSim: unknown ore '" + name + "'. Use: " + String.join(", ", oreNames())));
+                                    return 0;
+                                }
+                                types.add(type);
+                            }
+                            if (types.isEmpty()) {
+                                context.getSource().sendError(Component.literal("OreSim: name at least one ore."));
+                                return 0;
+                            }
+                            context.getSource().sendFeedback(Component.literal(
+                                hasBaritone() ? OreMineProcess.start(oreSim, types) : BARITONE_MISSING));
+                            return 1;
+                        })))
+                .then(ClientCommands.literal("clearmined").executes(context -> {
+                    int forgotten = oreSim.clearMined();
+                    context.getSource().sendFeedback(Component.literal(forgotten < 0
+                        ? "OreSim: turn the overlay on first (X), mined ores are kept per world."
+                        : "OreSim: forgot " + forgotten + " mined ores in this dimension; they show again."));
+                    return 1;
+                }))
+                .then(ClientCommands.literal("stop").executes(context -> {
+                    context.getSource().sendFeedback(Component.literal(
+                        hasBaritone() ? OreMineProcess.stop() : BARITONE_MISSING));
+                    return 1;
+                })));
 
             dispatcher.register(ClientCommands.literal("setoresimseed")
                 .then(ClientCommands.argument("seed", StringArgumentType.greedyString())
@@ -83,6 +141,35 @@ public class OreSimClient implements ClientModInitializer {
                     }))
             );
         });
+    }
+
+    /** Command names for ore types: the enum name in lower case, e.g. {@code diamond}, {@code debris}. */
+    private static List<String> oreNames() {
+        return Arrays.stream(OreType.values()).map(type -> type.name().toLowerCase(Locale.ROOT)).toList();
+    }
+
+    private static OreType oreTypeByName(String name) {
+        if (name.equals("ancient_debris") || name.equals("netherite")) return OreType.DEBRIS;
+        for (OreType type : OreType.values()) {
+            if (type.name().toLowerCase(Locale.ROOT).equals(name)) return type;
+        }
+        return null;
+    }
+
+    /** Suggests ore names for the word being typed in a space/comma separated list. */
+    private static CompletableFuture<Suggestions> suggestOreNames(SuggestionsBuilder builder) {
+        String remaining = builder.getRemaining().toLowerCase(Locale.ROOT);
+        int wordStart = Math.max(remaining.lastIndexOf(' '), remaining.lastIndexOf(',')) + 1;
+        String typed = remaining.substring(wordStart);
+        SuggestionsBuilder word = builder.createOffset(builder.getStart() + wordStart);
+        for (String name : oreNames()) {
+            if (name.startsWith(typed)) word.suggest(name);
+        }
+        return word.buildFuture();
+    }
+
+    private static boolean hasBaritone() {
+        return FabricLoader.getInstance().isModLoaded("baritone");
     }
 
     private void onTick() {
