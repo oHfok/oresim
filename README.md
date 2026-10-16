@@ -59,12 +59,24 @@ Works alongside Meteor Client.
 | --- | --- |
 | Toggle the overlay | **X** key (rebindable in Controls) |
 | Open the menu | **O** key or `/oresim` |
-| Set the world seed (multiplayer) | `/setoresimseed <seed>` (remembered per server) |
+| Set the world seed (multiplayer) | `/setoresimseed <seed>` (remembered per server; see [finding a server's seed](#finding-a-servers-seed)) |
 | Show mined/disproven ores again | `/oresim clearmined` |
 
 In singleplayer the seed is read from the world. Seeds follow vanilla rules:
 numeric text is a literal seed, other text is hashed like the world-creation
 screen does.
+
+#### Finding a server's seed
+
+A server never sends its seed to the client. Some servers publish it;
+otherwise [SeedCrackerX](https://github.com/19MisterX98/SeedcrackerX) (a
+separate Fabric mod, not affiliated with OreSim) can work it out while you
+explore: it records structures you pass, such as shipwrecks, desert pyramids,
+igloos, swamp huts and outposts, and cracks the seed from them, usually in a
+few minutes. It has builds for 26.1 to 26.3 (26.3 as a prerelease); download it
+only from its GitHub releases or its official CurseForge page, since copies
+elsewhere have carried malware. Then pass the seed to `/setoresimseed`. It
+only works on servers with vanilla world generation, which OreSim needs as well.
 
 The menu chooses which ores are shown (with *Show all* / *Hide all*) and how
 they're drawn; everything is saved in `config/oresim-settings.json`:
